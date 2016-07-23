@@ -28,11 +28,7 @@ RCT_EXPORT_MODULE();
     @"onVideoFullscreenPlayerWillPresent",
     @"onVideoFullscreenPlayerDidPresent",
     @"onVideoFullscreenPlayerWillDismiss",
-    @"onVideoFullscreenPlayerDidDismiss",
-    @"onReadyForDisplay",
-    @"onPlaybackStalled",
-    @"onPlaybackResume",
-    @"onPlaybackRateChange"
+    @"onVideoFullscreenPlayerDidDismiss"
   ];
 }
 
@@ -48,8 +44,6 @@ RCT_EXPORT_VIEW_PROPERTY(paused, BOOL);
 RCT_EXPORT_VIEW_PROPERTY(muted, BOOL);
 RCT_EXPORT_VIEW_PROPERTY(controls, BOOL);
 RCT_EXPORT_VIEW_PROPERTY(volume, float);
-RCT_EXPORT_VIEW_PROPERTY(playInBackground, BOOL);
-RCT_EXPORT_VIEW_PROPERTY(playWhenInactive, BOOL);
 RCT_EXPORT_VIEW_PROPERTY(rate, float);
 RCT_EXPORT_VIEW_PROPERTY(seek, float);
 RCT_EXPORT_VIEW_PROPERTY(currentTime, float);

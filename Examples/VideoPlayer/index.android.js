@@ -1,11 +1,8 @@
 'use strict';
 
 import React, {
-  Component
-} from 'react';
-
-import {
   AppRegistry,
+  Component,
   StyleSheet,
   Text,
   TouchableOpacity,

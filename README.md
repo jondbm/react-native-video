@@ -1,6 +1,6 @@
 ## react-native-video
 
-A `<Video>` component for react-native, as seen in
+A <Video> component for react-native, as seen in
 [react-native-login](https://github.com/brentvatne/react-native-login)!
 
 Requires react-native >= 0.19.0
@@ -13,37 +13,22 @@ Run `npm install react-native-video --save`
 
 Install [rnpm](https://github.com/rnpm/rnpm) and run `rnpm link react-native-video`
 
-If you would like to allow other apps to play music over your video component, add:
-
-**AppDelegate.m**
-```
-#import <AVFoundation/AVFoundation.h>  // import
-
-- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
-{
-  ...
-  [[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryAmbient error:nil];  // allow
-  ...
-}
-```
-
 #### Android
 
-Install [rnpm](https://github.com/rnpm/rnpm) and run `rnpm link react-native-video`
-
-Or if you have trouble using [rnpm](https://github.com/rnpm/rnpm), make the following additions to the given files manually:
+First, copy your video file to `android/app/src/main/res/raw/`, then
+make the following additions to the given files:
 
 **android/settings.gradle**
 ```
-include ':react-native-video'
-project(':react-native-video').projectDir = new File(rootProject.projectDir, '../node_modules/react-native-video/android')
+include ':RCTVideo', ':app'
+project(':RCTVideo').projectDir = new File(rootProject.projectDir, '../node_modules/react-native-video/android')
 ```
 
 **android/app/build.gradle**
 ```
 dependencies {
    ...
-   compile project(':react-native-video')
+   compile project(':RCTVideo')
 }
 ```
 
@@ -72,8 +57,6 @@ Under `.addPackage(new MainReactPackage())`:
        paused={false}               // Pauses playback entirely.
        resizeMode="cover"           // Fill the whole screen at aspect ratio.
        repeat={true}                // Repeat forever.
-       playInBackground={false}     // Audio continues to play when app entering background.
-       playWhenInactive={false}     // [iOS] Video continues to play when control or notification center are shown.
        onLoadStart={this.loadStart} // Callback when video starts to load
        onLoad={this.setDuration}    // Callback when video loads
        onProgress={this.setTime}    // Callback every ~250ms with currentTime
@@ -92,10 +75,6 @@ var styles = StyleSheet.create({
   },
 });
 ```
-
-### Play in background on iOS
-
-To enable audio to play in background on iOS the audio session needs to be set to `AVAudioSessionCategoryPlayback`. See [Apple documentation][3].
 
 ## Static Methods
 
@@ -127,7 +106,6 @@ Seeks the video to the specified time (in seconds). Access using a ref to the co
 
 [1]: https://github.com/brentvatne/react-native-login/blob/56c47a5d1e23781e86e19b27e10427fd6391f666/App/Screens/UserInfoScreen.js#L32-L35
 [2]: https://github.com/brentvatne/react-native-video/tree/master/Examples/VideoPlayer
-[3]: https://developer.apple.com/library/ios/qa/qa1668/_index.html
 
 ---
 

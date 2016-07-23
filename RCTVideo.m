@@ -7,8 +7,6 @@
 static NSString *const statusKeyPath = @"status";
 static NSString *const playbackLikelyToKeepUpKeyPath = @"playbackLikelyToKeepUp";
 static NSString *const playbackBufferEmptyKeyPath = @"playbackBufferEmpty";
-static NSString *const readyForDisplayKeyPath = @"readyForDisplay";
-static NSString *const playbackRate = @"rate";
 
 @implementation RCTVideo
 {
@@ -22,7 +20,6 @@ static NSString *const playbackRate = @"rate";
 
   /* Required to publish events */
   RCTEventDispatcher *_eventDispatcher;
-  BOOL _playbackRateObserverRegistered;
 
   bool _pendingSeek;
   float _pendingSeekTime;
@@ -39,9 +36,6 @@ static NSString *const playbackRate = @"rate";
   BOOL _muted;
   BOOL _paused;
   BOOL _repeat;
-  BOOL _playbackStalled;
-  BOOL _playInBackground;
-  BOOL _playWhenInactive;
   NSString * _resizeMode;
   BOOL _fullscreenPlayerPresented;
   UIViewController * _presentingViewController;
@@ -52,8 +46,6 @@ static NSString *const playbackRate = @"rate";
   if ((self = [super init])) {
     _eventDispatcher = eventDispatcher;
 
-    _playbackRateObserverRegistered = NO;
-    _playbackStalled = NO;
     _rate = 1.0;
     _volume = 1.0;
     _resizeMode = @"AVLayerVideoGravityResizeAspectFill";
@@ -63,17 +55,10 @@ static NSString *const playbackRate = @"rate";
     _progressUpdateInterval = 250;
     _controls = NO;
     _playerBufferEmpty = YES;
-    _playInBackground = false;
-    _playWhenInactive = false;
 
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(applicationWillResignActive:)
                                                  name:UIApplicationWillResignActiveNotification
-                                               object:nil];
-
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(applicationDidEnterBackground:)
-                                                 name:UIApplicationDidEnterBackgroundNotification
                                                object:nil];
 
     [[NSNotificationCenter defaultCenter] addObserver:self
@@ -132,26 +117,15 @@ static NSString *const playbackRate = @"rate";
 
 - (void)applicationWillResignActive:(NSNotification *)notification
 {
-  if (_playInBackground || _playWhenInactive || _paused) return;
-
-  [_player pause];
-  [_player setRate:0.0];
-}
-
-- (void)applicationDidEnterBackground:(NSNotification *)notification
-{
-  if (_playInBackground) {
-    // Needed to play sound in background. See https://developer.apple.com/library/ios/qa/qa1668/_index.html
-    [_playerLayer setPlayer:nil];
+  if (!_paused) {
+    [_player pause];
+    [_player setRate:0.0];
   }
 }
 
 - (void)applicationWillEnterForeground:(NSNotification *)notification
 {
   [self applyModifiers];
-  if (_playInBackground) {
-    [_playerLayer setPlayer:_player];
-  }
 }
 
 #pragma mark - Progress
@@ -239,20 +213,13 @@ static NSString *const playbackRate = @"rate";
   [self addPlayerItemObservers];
 
   [_player pause];
-  [self removePlayerLayer];
+  [_playerLayer removeFromSuperlayer];
+  _playerLayer = nil;
   [_playerViewController.view removeFromSuperview];
   _playerViewController = nil;
 
-  if (_playbackRateObserverRegistered) {
-    [_player removeObserver:self forKeyPath:playbackRate context:nil];
-    _playbackRateObserverRegistered = NO;
-  }
-
   _player = [AVPlayer playerWithPlayerItem:_playerItem];
   _player.actionAtItemEnd = AVPlayerActionAtItemEndNone;
-  
-  [_player addObserver:self forKeyPath:playbackRate options:0 context:nil];
-  _playbackRateObserverRegistered = YES;
 
   const Float64 progressUpdateIntervalMS = _progressUpdateInterval / 1000;
   // @see endScrubbing in AVPlayerDemoPlaybackViewController.m of https://developer.apple.com/library/ios/samplecode/AVPlayerDemo/Introduction/Intro.html
@@ -303,21 +270,9 @@ static NSString *const playbackRate = @"rate";
           
         NSObject *width = @"undefined";
         NSObject *height = @"undefined";
-        NSString *orientation = @"undefined";
-
         if ([_playerItem.asset tracksWithMediaType:AVMediaTypeVideo].count > 0) {
-          AVAssetTrack *videoTrack = [[_playerItem.asset tracksWithMediaType:AVMediaTypeVideo] objectAtIndex:0];
-          width = [NSNumber numberWithFloat:videoTrack.naturalSize.width];
-          height = [NSNumber numberWithFloat:videoTrack.naturalSize.height];
-          CGAffineTransform preferredTransform = [videoTrack preferredTransform];
-
-          if ((videoTrack.naturalSize.width == preferredTransform.tx
-            && videoTrack.naturalSize.height == preferredTransform.ty)
-            || (preferredTransform.tx == 0 && preferredTransform.ty == 0))
-          {
-            orientation = @"landscape";
-          } else
-            orientation = @"portrait";
+          width = [NSNumber numberWithFloat:[_playerItem.asset tracksWithMediaType:AVMediaTypeVideo][0].naturalSize.width];
+          height = [NSNumber numberWithFloat:[_playerItem.asset tracksWithMediaType:AVMediaTypeVideo][0].naturalSize.height];
         }
 
         [_eventDispatcher sendInputEventWithName:@"onVideoLoad"
@@ -331,8 +286,7 @@ static NSString *const playbackRate = @"rate";
                                                    @"canStepForward": [NSNumber numberWithBool:_playerItem.canStepForward],
                                                    @"naturalSize": @{
                                                         @"width": width,
-                                                        @"height": height,
-                                                        @"orientation": orientation
+                                                        @"height": height
                                                         },
                                                    @"target": self.reactTag}];
 
@@ -354,25 +308,6 @@ static NSString *const playbackRate = @"rate";
       }
       _playerBufferEmpty = NO;
     }
-   } else if (object == _playerLayer) {
-      if([keyPath isEqualToString:readyForDisplayKeyPath] && [change objectForKey:NSKeyValueChangeNewKey]) {
-        if([change objectForKey:NSKeyValueChangeNewKey]) {
-          [_eventDispatcher sendInputEventWithName:@"onReadyForDisplay"
-                                              body:@{@"target": self.reactTag}];
-        }
-    }
-  } else if (object == _player) {
-      if([keyPath isEqualToString:playbackRate]) {
-          [_eventDispatcher sendInputEventWithName:@"onPlaybackRateChange"
-                                              body:@{@"playbackRate": [NSNumber numberWithFloat:_player.rate],
-                                                     @"target": self.reactTag}];
-          if(_playbackStalled && _player.rate > 0) {
-              [_eventDispatcher sendInputEventWithName:@"onPlaybackResume"
-                                                  body:@{@"playbackRate": [NSNumber numberWithFloat:_player.rate],
-                                                         @"target": self.reactTag}];
-              _playbackStalled = NO;
-          }
-      }
   } else {
       [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
   }
@@ -385,16 +320,6 @@ static NSString *const playbackRate = @"rate";
                                            selector:@selector(playerItemDidReachEnd:)
                                                name:AVPlayerItemDidPlayToEndTimeNotification
                                              object:[_player currentItem]];
-  [[NSNotificationCenter defaultCenter] addObserver:self
-                                           selector:@selector(playbackStalled:)
-                                               name:AVPlayerItemPlaybackStalledNotification
-                                             object:nil];
-}
-
-- (void)playbackStalled:(NSNotification *)notification
-{
-  [_eventDispatcher sendInputEventWithName:@"onPlaybackStalled" body:@{@"target": self.reactTag}];
-  _playbackStalled = YES;
 }
 
 - (void)playerItemDidReachEnd:(NSNotification *)notification
@@ -421,16 +346,6 @@ static NSString *const playbackRate = @"rate";
     _playerLayer.videoGravity = mode;
   }
   _resizeMode = mode;
-}
-
-- (void)setPlayInBackground:(BOOL)playInBackground
-{
-  _playInBackground = playInBackground;
-}
-
-- (void)setPlayWhenInactive:(BOOL)playWhenInactive
-{
-  _playWhenInactive = playWhenInactive;
 }
 
 - (void)setPaused:(BOOL)paused
@@ -589,8 +504,6 @@ static NSString *const playbackRate = @"rate";
       _playerLayer = [AVPlayerLayer playerLayerWithPlayer:_player];
       _playerLayer.frame = self.bounds;
       _playerLayer.needsDisplayOnBoundsChange = YES;
-        
-      [_playerLayer addObserver:self forKeyPath:readyForDisplayKeyPath options:NSKeyValueObservingOptionNew context:nil];
     
       [self.layer addSublayer:_playerLayer];
       self.layer.needsDisplayOnBoundsChange = YES;
@@ -604,7 +517,8 @@ static NSString *const playbackRate = @"rate";
         _controls = controls;
         if( _controls )
         {
-            [self removePlayerLayer];
+            [_playerLayer removeFromSuperlayer];
+            _playerLayer = nil;
             [self usePlayerViewController];
         }
         else
@@ -614,13 +528,6 @@ static NSString *const playbackRate = @"rate";
             [self usePlayerLayer];
         }
     }
-}
-
-- (void)removePlayerLayer
-{
-    [_playerLayer removeFromSuperlayer];
-    [_playerLayer removeObserver:self forKeyPath:readyForDisplayKeyPath];
-    _playerLayer = nil;
 }
 
 #pragma mark - RCTVideoPlayerViewControllerDelegate
@@ -706,13 +613,10 @@ static NSString *const playbackRate = @"rate";
 - (void)removeFromSuperview
 {
   [_player pause];
-  if (_playbackRateObserverRegistered) {
-    [_player removeObserver:self forKeyPath:playbackRate context:nil];
-    _playbackRateObserverRegistered = NO;
-  }
   _player = nil;
 
-  [self removePlayerLayer];
+  [_playerLayer removeFromSuperlayer];
+  _playerLayer = nil;
   
   [_playerViewController.view removeFromSuperview];
   _playerViewController = nil;
